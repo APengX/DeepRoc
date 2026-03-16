@@ -115,9 +115,18 @@ class GitRepo:
             raise DeepRocError(result.stderr.strip() or result.stdout.strip())
         return result.stdout.strip()
 
-    def ensure_clean(self) -> None:
+    def ensure_clean(self, ignored_paths: list[str] | None = None) -> None:
+        ignored_paths = ignored_paths or []
         status = self._git("status", "--porcelain")
-        if status:
+        remaining = []
+        for line in status.splitlines():
+            if not line:
+                continue
+            rel_path = line[3:]
+            if any(rel_path == ignored or rel_path.startswith(f"{ignored}/") for ignored in ignored_paths):
+                continue
+            remaining.append(line)
+        if remaining:
             raise DeepRocError(
                 "Working tree is dirty. Commit or stash changes before running DeepRoc."
             )
@@ -128,8 +137,8 @@ class GitRepo:
     def short_head(self) -> str:
         return self._git("rev-parse", "--short", "HEAD")
 
-    def commit_all(self, message: str) -> str:
-        self._git("add", ".")
+    def commit_paths(self, message: str, paths: list[str]) -> str:
+        self._git("add", "--", *paths)
         self._git("commit", "-m", message)
         return self.short_head()
 
@@ -314,7 +323,7 @@ def run_iteration(config_path: str | Path) -> RunRecord:
     root = config_path.parent
     config = load_config(config_path)
     repo = GitRepo(root)
-    repo.ensure_clean()
+    repo.ensure_clean(ignored_paths=[config.journal_dir])
     provider = build_provider(config, root)
     results_path, state_path = journal_paths(root, config)
     state = load_state(state_path)
@@ -322,7 +331,7 @@ def run_iteration(config_path: str | Path) -> RunRecord:
     baseline_commit = repo.head()
     proposal = provider.generate(gather_context(root, config, state))
     apply_proposal(root, config, proposal)
-    commit = repo.commit_all(proposal.summary)
+    commit = repo.commit_paths(proposal.summary, config.mutable_paths)
     output_path = results_path.parent / f"run-{int(time.time())}.log"
     status = "keep"
     kept = False

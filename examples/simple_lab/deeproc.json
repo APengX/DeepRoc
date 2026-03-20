@@ -1,0 +1,15 @@
+{
+  "name": "simple-lab",
+  "program_path": "program.md",
+  "mutable_paths": ["message.txt"],
+  "provider": {
+    "type": "replay",
+    "path": "proposal.json"
+  },
+  "evaluation": {
+    "command": ["python3", "score.py"],
+    "metric_pattern": "score:\\s*([0-9.]+)",
+    "goal": "max",
+    "timeout_seconds": 10
+  }
+}
